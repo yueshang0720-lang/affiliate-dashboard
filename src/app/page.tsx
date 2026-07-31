@@ -161,6 +161,7 @@ export default function Home() {
           startDate: filters.startDate || undefined,
           endDate: filters.endDate || undefined,
           accountId: selectedAccountId || undefined,
+          mccId: selectedMccId || undefined,
         }),
       });
       const data: SyncResponse = await res.json();

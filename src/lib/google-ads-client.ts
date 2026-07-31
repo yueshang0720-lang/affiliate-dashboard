@@ -112,13 +112,6 @@ export async function fetchAccessibleAccounts(): Promise<GoogleAdsAccount[]> {
   return accounts;
 }
 
-interface ProxyCampaign {
-  campaign_id: string;
-  campaign_name: string;
-  status: string;
-  daily_budget: string;
-}
-
 interface ProxyCampaignStat {
   campaign_id: string;
   campaign_name: string;
@@ -137,7 +130,8 @@ interface ProxyCampaignStat {
 export async function fetchGoogleAdsMetrics(
   startDate: string,
   endDate: string,
-  accountId?: string
+  accountId?: string,
+  mccId?: string
 ): Promise<GoogleAdsMetrics[]> {
   if (!isProxyMode()) {
     return fetchGoogleAdsMetricsDirect(startDate, endDate, accountId);
@@ -147,38 +141,28 @@ export async function fetchGoogleAdsMetrics(
     throw new Error("Proxy mode requires a selected account. Please select an account from the dropdown.");
   }
 
-  // Fetch campaigns
-  const campaigns = await proxyPost<ProxyCampaign[]>("/campaigns", {
-    customer_id: accountId,
-  });
-
-  // Fetch stats for all campaigns
-  const stats = await proxyPost<ProxyCampaignStat[]>("/campaigns/stats", {
+  const statsBody: Record<string, string> = {
     customer_id: accountId,
     start_date: startDate,
     end_date: endDate,
-  });
+  };
+  // Pass MCC ID if account is a sub-account (required for permission)
+  if (mccId) statsBody.mcc_id = mccId;
 
-  // Build campaign lookup
-  const campaignMap = new Map<string, ProxyCampaign>();
-  for (const c of campaigns) {
-    campaignMap.set(c.campaign_id, c);
-  }
+  // Fetch stats (response includes campaign_name, date, metrics)
+  const stats = await proxyPost<ProxyCampaignStat[]>("/campaigns/stats", statsBody);
 
-  return stats.map((s) => {
-    const cpm = campaignMap.get(s.campaign_id);
-    return {
-      date: s.date,
-      campaignId: s.campaign_id,
-      campaignName: s.campaign_name,
-      impressions: s.impressions,
-      clicks: s.clicks,
-      cost: parseFloat(s.cost) || 0,
-      conversions: 0, // Not provided by this API
-      ctr: parseFloat(s.ctr) || 0,
-      cpc: parseFloat(s.avg_cpc) || 0,
-    };
-  });
+  return stats.map((s) => ({
+    date: s.date,
+    campaignId: s.campaign_id,
+    campaignName: s.campaign_name,
+    impressions: s.impressions,
+    clicks: s.clicks,
+    cost: parseFloat(s.cost) || 0,
+    conversions: 0,
+    ctr: parseFloat(s.ctr) || 0,
+    cpc: parseFloat(s.avg_cpc) || 0,
+  }));
 }
 
 // ============================================================

@@ -18,7 +18,8 @@ import type { SyncLog, GoogleAdsMetrics, AffiliateMetrics } from "@/types";
 export async function runSync(
   startDate?: string,
   endDate?: string,
-  accountId?: string
+  accountId?: string,
+  mccId?: string
 ): Promise<{ syncLogId: number; message: string }> {
   // Default: sync yesterday if no dates specified
   if (!endDate) {
@@ -46,7 +47,7 @@ export async function runSync(
       console.log(
         `[sync] Fetching Google Ads data: ${startDate} -> ${endDate}`
       );
-      googleAds = await fetchGoogleAdsMetrics(startDate, endDate, accountId);
+      googleAds = await fetchGoogleAdsMetrics(startDate, endDate, accountId, mccId);
       googleCount = googleAds.length;
       console.log(`[sync] Google Ads: ${googleCount} rows`);
       messages.push(`${googleCount} Google Ads rows`);

@@ -17,13 +17,14 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { startDate, endDate, accountId } = body as {
+    const { startDate, endDate, accountId, mccId } = body as {
       startDate?: string;
       endDate?: string;
       accountId?: string;
+      mccId?: string;
     };
 
-    const result = await runSync(startDate, endDate, accountId);
+    const result = await runSync(startDate, endDate, accountId, mccId);
 
     return NextResponse.json({
       success: true,
