@@ -10,6 +10,7 @@ import path from "path";
 import fs from "fs";
 
 export interface AppSettings {
+  googleAdsProxyApiKey: string;    // streamingconverter proxy API key (simplest)
   googleAdsClientId: string;
   googleAdsClientSecret: string;
   googleAdsDeveloperToken: string;
@@ -29,6 +30,7 @@ export interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
+  googleAdsProxyApiKey: "",
   googleAdsClientId: "",
   googleAdsClientSecret: "",
   googleAdsDeveloperToken: "",
