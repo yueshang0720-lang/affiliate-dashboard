@@ -28,9 +28,9 @@ export interface GoogleAdsAccount {
 }
 
 export interface GoogleAdsMccTree {
-  mccId: string;
-  mccName: string;
-  clients: { customerId: string; customerName: string }[];
+  mcc_id: string;
+  mcc_name: string;
+  clients: { customer_id: string; customer_name: string }[];
 }
 
 function getProxyApiKey(): string {
@@ -88,19 +88,19 @@ export async function fetchAccessibleAccounts(): Promise<GoogleAdsAccount[]> {
   for (const mcc of trees) {
     // Add MCC as manager account
     accounts.push({
-      id: mcc.mccId,
-      name: mcc.mccName,
+      id: mcc.mcc_id,
+      name: mcc.mcc_name,
       isManager: true,
     });
 
     // Add sub-accounts
     for (const client of mcc.clients) {
       accounts.push({
-        id: client.customerId,
-        name: client.customerName,
+        id: client.customer_id,
+        name: client.customer_name,
         isManager: false,
-        parentMccId: mcc.mccId,
-        parentMccName: mcc.mccName,
+        parentMccId: mcc.mcc_id,
+        parentMccName: mcc.mcc_name,
       });
     }
   }
