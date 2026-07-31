@@ -49,6 +49,9 @@ async function proxyPost<T>(
   const apiKey = getProxyApiKey();
   if (!apiKey) throw new Error("Proxy API key not configured");
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+
   const res = await fetch(`${PROXY_BASE}${path}`, {
     method: "POST",
     headers: {
@@ -56,7 +59,8 @@ async function proxyPost<T>(
       "X-API-Key": apiKey,
     },
     body: JSON.stringify(body),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
 
   const json = await res.json() as {
     issucc: boolean;
