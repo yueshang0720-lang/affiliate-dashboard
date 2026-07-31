@@ -2,32 +2,37 @@
  * Data Matcher
  *
  * Matches Google Ads metrics with Affiliate metrics by (date, campaign_name).
- * Produces unified rows with match status tagging.
+ *
+ * Supports campaign mapping: multiple Google Ads campaigns → one Affiliate campaign.
+ * When mappings are configured, GA data is aggregated before matching.
  */
 
 import type { GoogleAdsMetrics, AffiliateMetrics, UnifiedStats } from "@/types";
+import { loadMappings } from "./campaign-mapping";
 
 export function matchData(
   googleAds: GoogleAdsMetrics[],
   affiliate: AffiliateMetrics[]
 ): UnifiedStats[] {
-  // Build lookup maps keyed by "date|campaign_name_normalized"
+  // Step 0: Apply campaign mappings — translate GA campaign names
+  const gaMapped = applyGaMappings(googleAds);
+
+  // Step 1: Aggregate Google Ads data by (date, mapped_campaign_name)
+  const gaAggregated = aggregateGoogleAds(gaMapped);
+
+  // Step 2: Build lookup maps
   const gaMap = new Map<string, GoogleAdsMetrics>();
   const affMap = new Map<string, AffiliateMetrics>();
 
-  for (const row of googleAds) {
-    const key = makeKey(row.date, row.campaignName);
-    gaMap.set(key, row);
+  for (const row of gaAggregated) {
+    gaMap.set(makeKey(row.date, row.campaignName), row);
   }
-
   for (const row of affiliate) {
-    const key = makeKey(row.date, row.campaignName);
-    affMap.set(key, row);
+    affMap.set(makeKey(row.date, row.campaignName), row);
   }
 
-  // Collect all unique keys from both sources
+  // Step 3: Full outer join
   const allKeys = new Set([...gaMap.keys(), ...affMap.keys()]);
-
   const results: UnifiedStats[] = [];
 
   for (const key of allKeys) {
@@ -38,29 +43,21 @@ export function matchData(
     const campaignName = ga?.campaignName || aff?.campaignName || "";
     const campaignId = ga?.campaignId || aff?.campaignId || "";
 
-    // Google Ads side
     const gaImpressions = ga?.impressions || 0;
     const gaClicks = ga?.clicks || 0;
     const gaCost = ga?.cost || 0;
     const gaConversions = ga?.conversions || 0;
-    const gaCtr = ga?.ctr || (gaImpressions > 0 ? gaClicks / gaImpressions : 0);
-    const gaCpc = ga?.cpc || (gaClicks > 0 ? gaCost / gaClicks : 0);
+    const gaCtr = gaImpressions > 0 ? gaClicks / gaImpressions : 0;
+    const gaCpc = gaClicks > 0 ? gaCost / gaClicks : 0;
 
-    // Affiliate side
     const affClicks = aff?.clicks || 0;
     const affConversions = aff?.conversions || 0;
     const affCommission = aff?.commission || 0;
     const affOrderValue = aff?.orderValue || 0;
-    const affConversionRate =
-      aff?.conversionRate ||
-      (affClicks > 0 ? (affConversions / affClicks) * 100 : 0);
+    const affConversionRate = affClicks > 0 ? (affConversions / affClicks) * 100 : 0;
 
-    // Derived
     const profit = affCommission - gaCost;
-    const roi =
-      gaCost > 0
-        ? Math.round(((affCommission - gaCost) / gaCost) * 10000) / 100
-        : 0;
+    const roi = gaCost > 0 ? Math.round((profit / gaCost) * 10000) / 100 : 0;
 
     results.push({
       date,
@@ -82,11 +79,9 @@ export function matchData(
     });
   }
 
-  // Sort by date desc, then campaign name
   results.sort((a, b) => {
-    const dateCmp = b.date.localeCompare(a.date);
-    if (dateCmp !== 0) return dateCmp;
-    return a.campaignName.localeCompare(b.campaignName);
+    const d = b.date.localeCompare(a.date);
+    return d !== 0 ? d : a.campaignName.localeCompare(b.campaignName);
   });
 
   return results;
@@ -96,94 +91,64 @@ export function matchData(
 // Helpers
 // ============================================================
 
+function applyGaMappings(rows: GoogleAdsMetrics[]): GoogleAdsMetrics[] {
+  const mappings = loadMappings();
+  if (mappings.length === 0) return rows;
+
+  // Build lookup: gaCampaignName → mapped affCampaignName
+  const nameMap = new Map<string, string>();
+  for (const m of mappings) {
+    for (const gaName of m.gaCampaignNames) {
+      nameMap.set(gaName, m.affCampaignName);
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    campaignName: nameMap.get(row.campaignName) || row.campaignName,
+  }));
+}
+
+/**
+ * Aggregate Google Ads rows that map to the same (date, campaignName).
+ * Sums impressions, clicks, cost, conversions; recalculates CTR/CPC.
+ */
+function aggregateGoogleAds(
+  rows: GoogleAdsMetrics[]
+): GoogleAdsMetrics[] {
+  const groups = new Map<string, GoogleAdsMetrics>();
+
+  for (const row of rows) {
+    const key = makeKey(row.date, row.campaignName);
+    const existing = groups.get(key);
+
+    if (!existing) {
+      groups.set(key, { ...row });
+    } else {
+      existing.impressions += row.impressions;
+      existing.clicks += row.clicks;
+      existing.cost += row.cost;
+      existing.conversions += row.conversions;
+      existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions : 0;
+      existing.cpc = existing.clicks > 0 ? existing.cost / existing.clicks : 0;
+      // Use latest campaignId
+      existing.campaignId = existing.campaignId || row.campaignId;
+    }
+  }
+
+  // Round aggregated values
+  return Array.from(groups.values()).map((r) => ({
+    ...r,
+    cost: Math.round(r.cost * 100) / 100,
+    ctr: Math.round(r.ctr * 10000) / 100,
+    cpc: Math.round(r.cpc * 100) / 100,
+  }));
+}
+
 function makeKey(date: string, campaignName: string): string {
-  return `${date}|${normalizeCampaignName(campaignName)}`;
+  return `${date}|${normalize(campaignName)}`;
 }
 
-function normalizeCampaignName(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ") // collapse multiple spaces
-    .replace(/[_-]/g, " "); // treat underscores and dashes as spaces
-}
-
-// ============================================================
-// Fuzzy matching utils (for advanced use)
-// ============================================================
-
-export function findPotentialMatches(
-  googleAds: GoogleAdsMetrics[],
-  affiliate: AffiliateMetrics[]
-): { gaName: string; affName: string; similarity: number }[] {
-  const suggestions: {
-    gaName: string;
-    affName: string;
-    similarity: number;
-  }[] = [];
-  const matchedAff = new Set<string>();
-
-  for (const ga of googleAds) {
-    const gaNorm = normalizeCampaignName(ga.campaignName);
-
-    for (const aff of affiliate) {
-      if (matchedAff.has(aff.campaignName)) continue;
-
-      const affNorm = normalizeCampaignName(aff.campaignName);
-      const similarity = diceSimilarity(gaNorm, affNorm);
-
-      if (
-        similarity > 0.7 &&
-        similarity < 1.0 && // exclude exact matches
-        ga.date === aff.date
-      ) {
-        suggestions.push({
-          gaName: ga.campaignName,
-          affName: aff.campaignName,
-          similarity: Math.round(similarity * 100) / 100,
-        });
-      }
-    }
-  }
-
-  // Deduplicate by affiliate name
-  const seen = new Set<string>();
-  return suggestions.filter((s) => {
-    const key = `${s.affName}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-// Sørensen–Dice coefficient for string similarity
-function diceSimilarity(a: string, b: string): number {
-  if (a === b) return 1.0;
-  if (a.length < 2 || b.length < 2) return 0;
-
-  const bigramsA = getBigrams(a);
-  const bigramsB = getBigrams(b);
-
-  let intersection = 0;
-  const mapA = new Map<string, number>();
-  for (const bg of bigramsA) {
-    mapA.set(bg, (mapA.get(bg) || 0) + 1);
-  }
-  for (const bg of bigramsB) {
-    const count = mapA.get(bg);
-    if (count && count > 0) {
-      intersection++;
-      mapA.set(bg, count - 1);
-    }
-  }
-
-  return (2 * intersection) / (bigramsA.length + bigramsB.length);
-}
-
-function getBigrams(str: string): string[] {
-  const bigrams: string[] = [];
-  for (let i = 0; i < str.length - 1; i++) {
-    bigrams.push(str.substring(i, i + 2));
-  }
-  return bigrams;
+function normalize(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ").replace(/[_-]/g, " ");
 }

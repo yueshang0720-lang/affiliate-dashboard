@@ -6,6 +6,7 @@ import FilterBar, { type FilterState } from "@/components/FilterBar";
 import KpiCards from "@/components/KpiCards";
 import SyncStatus from "@/components/SyncStatus";
 import SettingsModal from "@/components/SettingsModal";
+import MappingModal from "@/components/MappingModal";
 import type {
   MatchedRow,
   SummaryStats,
@@ -36,6 +37,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mappingOpen, setMappingOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -213,6 +215,13 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={() => setMappingOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-blue-300 dark:border-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 dark:text-white transition-colors"
+              title="广告系列映射"
+            >
+              🔗 映射
+            </button>
+            <button
               onClick={() => setSettingsOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-white transition-colors"
               title="API 设置"
@@ -256,6 +265,17 @@ export default function Home() {
         <SettingsModal
           open={settingsOpen}
           onClose={handleSettingsClose}
+        />
+
+        {/* Mapping Modal */}
+        <MappingModal
+          open={mappingOpen}
+          onClose={() => setMappingOpen(false)}
+          onMappingChanged={() => {
+            // Re-fetch data after mapping changes
+            fetchData();
+            fetchStats();
+          }}
         />
       </div>
     </div>
