@@ -28,6 +28,7 @@ export default function Home() {
 
   // Accounts state
   const [accounts, setAccounts] = useState<GoogleAdsAccount[]>([]);
+  const [selectedMccId, setSelectedMccId] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [accountsLoading, setAccountsLoading] = useState(false);
 
@@ -124,6 +125,12 @@ export default function Home() {
     // Refresh account list in case Google Ads config has changed
     fetchAccounts();
   }, [fetchAccounts]);
+
+  // Handle MCC change
+  const handleMccChange = useCallback(async (mccId: string) => {
+    setSelectedMccId(mccId);
+    setSelectedAccountId(""); // reset sub-account when MCC changes
+  }, []);
 
   // Handle account change
   const handleAccountChange = useCallback(
@@ -224,7 +231,9 @@ export default function Home() {
           onFilterChange={handleFilterChange}
           syncing={syncing}
           accounts={accounts}
+          selectedMccId={selectedMccId}
           selectedAccountId={selectedAccountId}
+          onMccChange={handleMccChange}
           onAccountChange={handleAccountChange}
           accountsLoading={accountsLoading}
         />

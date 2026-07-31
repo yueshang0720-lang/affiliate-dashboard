@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo } from "react";
 import type { MatchStatus } from "@/types";
 import type { GoogleAdsAccount } from "@/lib/google-ads-client";
 
@@ -9,7 +9,9 @@ interface FilterBarProps {
   onFilterChange: (filters: FilterState) => void;
   syncing: boolean;
   accounts: GoogleAdsAccount[];
+  selectedMccId: string;
   selectedAccountId: string;
+  onMccChange: (mccId: string) => void;
   onAccountChange: (accountId: string) => void;
   accountsLoading: boolean;
 }
@@ -26,7 +28,9 @@ export default function FilterBar({
   onFilterChange,
   syncing,
   accounts,
+  selectedMccId,
   selectedAccountId,
+  onMccChange,
   onAccountChange,
   accountsLoading,
 }: FilterBarProps) {
@@ -50,25 +54,24 @@ export default function FilterBar({
     if (e.key === "Enter") apply();
   }
 
-  // Separate manager accounts and sub-accounts for hierarchical display
+  // Build cascading hierarchy
   const managers = accounts.filter((a) => a.isManager);
-  const subAccounts = accounts.filter((a) => !a.isManager);
-
-  // Determine if we should show the account selector
+  const subAccounts = useMemo(
+    () => (selectedMccId ? accounts.filter((a) => !a.isManager && a.parentMccId === selectedMccId) : []),
+    [accounts, selectedMccId]
+  );
   const hasAccounts = accounts.length > 0;
 
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4 bg-white dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-      {/* Account Selector */}
+      {/* MCC Selector (Level 1) */}
       <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-          谷歌账户
-        </label>
+        <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">MCC</label>
         <select
-          value={selectedAccountId}
-          onChange={(e) => onAccountChange(e.target.value)}
+          value={selectedMccId}
+          onChange={(e) => onMccChange(e.target.value)}
           disabled={accountsLoading || !hasAccounts}
-          className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white max-w-[220px]"
+          className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white max-w-[200px]"
         >
           {accountsLoading ? (
             <option value="">加载中...</option>
@@ -76,25 +79,38 @@ export default function FilterBar({
             <option value="">请先配置API</option>
           ) : (
             <>
-              <option value="">全部账户</option>
-              {subAccounts.length > 0 && (
-                <optgroup label="── 子账户 ──">
-                  {subAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.id})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {managers.length > 0 && (
-                <optgroup label="── MCC经理账户 ──">
-                  {managers.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.id})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
+              <option value="">选择MCC</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.id})
+                </option>
+              ))}
+            </>
+          )}
+        </select>
+      </div>
+
+      {/* Sub-account Selector (Level 2) */}
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">子账户</label>
+        <select
+          value={selectedAccountId}
+          onChange={(e) => onAccountChange(e.target.value)}
+          disabled={!selectedMccId || subAccounts.length === 0}
+          className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white max-w-[240px]"
+        >
+          {!selectedMccId ? (
+            <option value="">先选MCC</option>
+          ) : subAccounts.length === 0 ? (
+            <option value="">无子账户</option>
+          ) : (
+            <>
+              <option value="">全部子账户</option>
+              {subAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.id})
+                </option>
+              ))}
             </>
           )}
         </select>
